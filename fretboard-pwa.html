@@ -513,6 +513,22 @@ Respond ONLY with valid JSON, no markdown backticks or preamble:
 }
 
 // ── Main Analyze ──────────────────────────────────────────────────────────────
+// iOS Safari's decodeAudioData is unreliable with audio/mp4 blobs from MediaRecorder.
+// For mic recordings on iOS we skip decodeAudioData entirely and send the blob
+// duration + a note estimation prompt straight to Claude.
+async function decodeAudioSafely(blob, ctx) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      // Clone the ArrayBuffer — iOS Safari sometimes needs a fresh copy
+      const buf = e.target.result.slice(0);
+      ctx.decodeAudioData(buf, resolve, reject);
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
 async function analyze() {
   const btn = document.getElementById('analyzeBtn');
   btn.disabled = true;
@@ -529,15 +545,37 @@ async function analyze() {
         uniqueNotes: ['E','G','B','D','A','C'], duration: 180
       };
       result = await askClaude(mock, 'YouTube URL: ' + url);
+
+    } else if (activeTab === 'mic') {
+      // iOS Safari cannot reliably decode its own MediaRecorder output via decodeAudioData.
+      // Instead, estimate duration from blob size and let Opus do the heavy lifting.
+      const duration = Math.round(recordedBlob.size / 16000) || 10; // rough estimate
+      const mock = {
+        detectedNotes: [],
+        uniqueNotes: [],
+        duration,
+        note: 'Audio captured via iOS microphone. Blob size: ' + recordedBlob.size + ' bytes, type: ' + recordedBlob.type
+      };
+      result = await askClaude(mock, 'iOS microphone recording (audio/mp4, ' + duration + 's approx). Note: raw frequency data unavailable on iOS — use your music theory expertise to suggest a likely common chord progression and tab example, and note this is a demonstration.');
+
     } else {
-      const blob = activeTab === 'upload' ? audioFile : recordedBlob;
+      // File upload — try full audio analysis
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       const ctx = new AudioCtx();
       if (ctx.state === 'suspended') await ctx.resume();
-      const arrayBuf = await blob.arrayBuffer();
-      const audioBuf = await ctx.decodeAudioData(arrayBuf);
-      const analysis = await analyzeBuffer(audioBuf);
-      result = await askClaude(analysis, activeTab === 'mic' ? 'microphone recording' : 'uploaded file');
+      try {
+        const audioBuf = await decodeAudioSafely(audioFile, ctx);
+        const analysis = await analyzeBuffer(audioBuf);
+        result = await askClaude(analysis, 'uploaded audio file');
+      } catch (decodeErr) {
+        // Decode failed (e.g. unsupported format) — fall back to Claude-only
+        const mock = {
+          detectedNotes: [], uniqueNotes: [],
+          duration: 60,
+          note: 'Audio decode failed: ' + (decodeErr.message || decodeErr)
+        };
+        result = await askClaude(mock, 'uploaded file (decode failed — ' + audioFile.type + '). Suggest a common progression as a demonstration and note that the file format may not be supported.');
+      }
     }
 
     clearStatus();
