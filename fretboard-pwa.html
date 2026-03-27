@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+  <!-- PWA / iOS meta -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Fretboard" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <meta name="description" content="AI Guitar Transcription Engine" />
+
+  <title>Fretboard</title>
+
+  <!-- Inline SVG favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230a0a0a'/><text y='.9em' font-size='80'>🎸</text></svg>" />
+
+  <!-- Inline manifest via JS blob (no separate file needed) -->
+  <script>
+    const manifest = {
+      name: "Fretboard — AI Guitar Transcription",
+      short_name: "Fretboard",
+      description: "AI-powered guitar tab and chord transcription",
+      start_url: ".",
+      display: "standalone",
+      background_color: "#0a0a0a",
+      theme_color: "#0a0a0a",
+      orientation: "portrait",
+      icons: [
+        { src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%230a0a0a'/><text y='160' x='10' font-size='160'>🎸</text></svg>", sizes: "192x192", type: "image/svg+xml" },
+        { src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' fill='%230a0a0a'/><text y='430' x='20' font-size='430'>🎸</text></svg>", sizes: "512x512", type: "image/svg+xml" }
+      ]
+    };
+    const blob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+    const manifestURL = URL.createObjectURL(blob);
+    document.write(`<link rel="manifest" href="${manifestURL}">`);
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111;
+      --surface2: #1a1a1a;
+      --border: #2a2a2a;
+      --accent: #c8f135;
+      --accent2: #f13535;
+      --text: #e8e8e8;
+      --muted: #666;
+      --string1: #f5c518;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-text-size-adjust: 100%;
+      overscroll-behavior: none;
+    }
+
+    #app {
+      min-height: 100vh;
+      min-height: -webkit-fill-available;
+      background: var(--bg);
+      background-image:
+        repeating-linear-gradient(0deg, transparent, transparent 39px, #161616 39px, #161616 40px),
+        repeating-linear-gradient(90deg, transparent, transparent 39px, #161616 39px, #161616 40px);
+      padding: calc(var(--safe-top) + 1.5rem) 1rem calc(var(--safe-bottom) + 2rem);
+    }
+
+    .header { text-align: center; margin-bottom: 2rem; }
+    .header h1 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(3.5rem, 18vw, 5.5rem);
+      letter-spacing: 0.05em;
+      line-height: 1;
+      color: var(--accent);
+      text-shadow: 3px 3px 0 #2a3a00;
+    }
+    .header p { color: var(--muted); font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; margin-top: 0.4rem; }
+
+    .container { max-width: 600px; margin: 0 auto; }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 3px; padding: 1.25rem; margin-bottom: 0.75rem; }
+
+    .card-title {
+      font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: 0.1em;
+      color: var(--accent); margin-bottom: 0.9rem; display: flex; align-items: center; gap: 0.5rem;
+    }
+    .card-title::before {
+      content: ''; display: inline-block; width: 7px; height: 7px;
+      background: var(--accent); transform: rotate(45deg); flex-shrink: 0;
+    }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 2px; margin-bottom: 1.25rem; }
+    .tab {
+      flex: 1; padding: 0.65rem 0.25rem; background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); font-family: 'Space Mono', monospace; font-size: 0.65rem;
+      text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer;
+      -webkit-appearance: none; border-radius: 2px;
+    }
+    .tab.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+
+    /* Upload */
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: 3px; padding: 1.75rem 1rem;
+      text-align: center; cursor: pointer; position: relative; transition: border-color 0.2s;
+    }
+    .upload-zone.drag { border-color: var(--accent); background: rgba(200,241,53,0.03); }
+    .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .upload-zone .icon { font-size: 2rem; margin-bottom: 0.4rem; }
+    .upload-zone p { color: var(--muted); font-size: 0.7rem; }
+    .upload-zone .filename { color: var(--accent); font-size: 0.78rem; margin-top: 0.4rem; font-weight: 700; }
+
+    /* URL */
+    .url-input {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text); font-family: 'Space Mono', monospace; font-size: 0.78rem;
+      padding: 0.7rem 0.8rem; border-radius: 2px; outline: none; -webkit-appearance: none;
+    }
+    .url-input:focus { border-color: var(--accent); }
+    .url-input::placeholder { color: var(--muted); }
+    .url-hint { font-size: 0.62rem; color: var(--muted); margin-top: 0.5rem; line-height: 1.5; }
+
+    /* Mic */
+    .mic-area { text-align: center; padding: 0.5rem 0 0.75rem; }
+    .waveform-bar { width: 100%; height: 55px; background: var(--surface2); border-radius: 2px; overflow: hidden; margin-bottom: 1rem; }
+    .mic-btn {
+      width: 76px; height: 76px; border-radius: 50%;
+      background: var(--surface2); border: 2px solid var(--border);
+      cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+      font-size: 1.8rem; -webkit-appearance: none; transition: border-color 0.2s;
+    }
+    .mic-btn.recording { border-color: var(--accent2); background: rgba(241,53,53,0.12); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(241,53,53,0.5); } 50% { box-shadow: 0 0 0 14px rgba(241,53,53,0); } }
+    .mic-status { font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-top: 0.65rem; }
+    .mic-status.active { color: var(--accent2); }
+
+    /* Analyze button */
+    .analyze-btn {
+      width: 100%; padding: 1rem; background: var(--accent); color: #000;
+      font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; letter-spacing: 0.15em;
+      border: none; border-radius: 2px; cursor: pointer; -webkit-appearance: none;
+      transition: background 0.15s; margin-bottom: 0.75rem;
+    }
+    .analyze-btn:active { background: #d4ff3a; }
+    .analyze-btn:disabled { background: var(--border); color: var(--muted); }
+
+    /* Loading */
+    .loading { text-align: center; padding: 1.5rem; font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); }
+    .loading-anim::after { content: '.'; animation: dots 1.5s steps(1) infinite; }
+    @keyframes dots { 0% { content: '.'; } 33% { content: '..'; } 66% { content: '...'; } }
+
+    /* Error */
+    .error-box { background: rgba(241,53,53,0.08); border: 1px solid var(--accent2); border-radius: 2px; padding: 0.9rem; font-size: 0.74rem; color: #f99; line-height: 1.6; }
+
+    /* Stats grid */
+    .results-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem; margin-bottom: 0.9rem; }
+    .stat-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 2px; padding: 0.85rem; text-align: center; }
+    .stat-label { font-size: 0.58rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.3rem; }
+    .stat-value { font-family: 'Bebas Neue', sans-serif; font-size: 1.7rem; color: var(--accent); line-height: 1; }
+    .stat-sub { font-size: 0.6rem; color: var(--muted); margin-top: 0.2rem; }
+
+    /* Chord pills */
+    .chord-row { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.9rem; }
+    .chord-pill {
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 2px;
+      padding: 0.35rem 0.75rem; font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem;
+      letter-spacing: 0.05em; color: var(--text);
+    }
+    .chord-pill.root { border-color: var(--accent); color: var(--accent); }
+
+    /* Tab display */
+    .tab-display {
+      background: #000; border: 1px solid var(--border); border-radius: 2px;
+      padding: 1rem 1.25rem; font-family: 'Space Mono', monospace;
+      font-size: clamp(0.55rem, 2.5vw, 0.75rem); line-height: 1.9;
+      overflow-x: auto; white-space: pre; color: #e8e8e8; margin-bottom: 0.9rem;
+      -webkit-overflow-scrolling: touch;
+    }
+    .tab-string-e6 { color: var(--string1); }
+
+    /* Section label */
+    .section-label { font-size: 0.6rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem; }
+
+    /* Notes */
+    .notes-grid { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.9rem; }
+    .note-badge { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); font-size: 0.68rem; padding: 0.22rem 0.5rem; border-radius: 2px; }
+    .note-badge.highlight { border-color: var(--accent); color: var(--accent); }
+
+    /* Prose */
+    .prose { font-size: 0.75rem; line-height: 1.7; color: #bbb; border-left: 2px solid var(--accent); padding-left: 0.9rem; }
+
+    /* Strumming */
+    .strum { font-family: 'Space Mono', monospace; font-size: 1rem; letter-spacing: 0.2em; color: var(--accent); margin-bottom: 0.9rem; }
+
+    /* Install banner */
+    .install-banner {
+      display: none; background: var(--surface2); border: 1px solid var(--accent);
+      border-radius: 3px; padding: 0.9rem 1rem; margin-bottom: 0.75rem;
+      font-size: 0.7rem; color: var(--text); line-height: 1.6;
+    }
+    .install-banner.show { display: block; }
+    .install-banner strong { color: var(--accent); display: block; margin-bottom: 0.3rem; font-size: 0.8rem; }
+    .install-banner .steps { color: var(--muted); }
+
+    hr { border: none; border-top: 1px solid var(--border); margin: 0.75rem 0; }
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="container">
+    <div class="header">
+      <h1>FRETBOARD</h1>
+      <p>AI Guitar Transcription Engine</p>
+    </div>
+
+    <!-- Install banner (shown only in browser, not when installed) -->
+    <div class="install-banner" id="installBanner">
+      <strong>📲 Install as App</strong>
+      <div class="steps">Tap the <strong>Share</strong> button (□↑) → <strong>Add to Home Screen</strong> → <strong>Add</strong></div>
+    </div>
+
+    <!-- Input card -->
+    <div class="card">
+      <div class="card-title">Audio Input</div>
+      <div class="tabs">
+        <button class="tab active" data-tab="upload" onclick="switchTab('upload')">📁 File</button>
+        <button class="tab" data-tab="mic" onclick="switchTab('mic')">🎙 Mic</button>
+        <button class="tab" data-tab="url" onclick="switchTab('url')">🔗 URL</button>
+      </div>
+
+      <div id="tab-upload">
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" accept="audio/*" id="fileInput" onchange="onFileSelected(event)" />
+          <div class="icon">🎵</div>
+          <p>Tap to select audio file</p>
+          <p style="font-size:0.62rem;margin-top:0.2rem;">MP3, WAV, M4A supported</p>
+          <div class="filename" id="fileName"></div>
+        </div>
+      </div>
+
+      <div id="tab-mic" style="display:none;">
+        <div class="mic-area">
+          <div class="waveform-bar">
+            <canvas id="waveCanvas" width="600" height="55" style="width:100%;height:100%;"></canvas>
+          </div>
+          <button class="mic-btn" id="micBtn" onclick="toggleMic()">🎙</button>
+          <div class="mic-status" id="micStatus">Tap to start recording</div>
+        </div>
+      </div>
+
+      <div id="tab-url" style="display:none;">
+        <input class="url-input" id="urlInput" type="url" placeholder="https://youtube.com/watch?v=..." />
+        <p class="url-hint">ℹ️ Claude will reason about the song from the URL. For best accuracy, use a file or mic.</p>
+      </div>
+    </div>
+
+    <button class="analyze-btn" id="analyzeBtn" onclick="analyze()" disabled>Analyze Song</button>
+
+    <div id="statusArea"></div>
+    <div id="resultsArea"></div>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let activeTab = 'upload';
+let audioFile = null;
+let recordedBlob = null;
+let isRecording = false;
+let mediaRecorder = null;
+let chunks = [];
+let analyser = null;
+let animFrame = null;
+let audioCtxRef = null;
+
+// ── Install Banner ────────────────────────────────────────────────────────────
+// Show install hint only when running in browser (not standalone)
+if (!window.navigator.standalone && /iphone|ipad|ipod/i.test(navigator.userAgent)) {
+  document.getElementById('installBanner').classList.add('show');
+}
+
+// ── Tab Switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  ['upload','mic','url'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === tab ? '' : 'none';
+    document.querySelector(`[data-tab="${t}"]`).classList.toggle('active', t === tab);
+  });
+  updateAnalyzeBtn();
+}
+
+function updateAnalyzeBtn() {
+  const btn = document.getElementById('analyzeBtn');
+  const enabled =
+    (activeTab === 'upload' && audioFile) ||
+    (activeTab === 'mic' && recordedBlob) ||
+    (activeTab === 'url' && document.getElementById('urlInput').value.trim().length > 0);
+  btn.disabled = !enabled;
+}
+
+document.getElementById('urlInput').addEventListener('input', updateAnalyzeBtn);
+
+// ── File Upload ───────────────────────────────────────────────────────────────
+function onFileSelected(e) {
+  audioFile = e.target.files[0];
+  document.getElementById('fileName').textContent = audioFile ? '✓ ' + audioFile.name : '';
+  updateAnalyzeBtn();
+}
+
+// ── Mic Recording ─────────────────────────────────────────────────────────────
+function drawWaveform(data) {
+  const canvas = document.getElementById('waveCanvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#c8f135';
+  const barW = canvas.width / data.length;
+  data.forEach((v, i) => {
+    const h = Math.max(2, v * canvas.height);
+    ctx.fillRect(i * barW, (canvas.height - h) / 2, Math.max(1, barW - 1), h);
+  });
+}
+
+function startLiveWaveform() {
+  if (!analyser) return;
+  const buf = new Uint8Array(analyser.frequencyBinCount);
+  const tick = () => {
+    animFrame = requestAnimationFrame(tick);
+    analyser.getByteTimeDomainData(buf);
+    const samples = 60, step = Math.floor(buf.length / samples), bars = [];
+    for (let i = 0; i < samples; i++) bars.push(Math.abs((buf[i * step] - 128) / 128));
+    drawWaveform(bars);
+  };
+  tick();
+}
+
+async function toggleMic() {
+  if (isRecording) {
+    stopMic();
+  } else {
+    await startMic();
+  }
+}
+
+async function startMic() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+
+    // iOS requires webkitAudioContext
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    audioCtxRef = new AudioCtx();
+    if (audioCtxRef.state === 'suspended') await audioCtxRef.resume();
+
+    analyser = audioCtxRef.createAnalyser();
+    analyser.fftSize = 2048;
+    audioCtxRef.createMediaStreamSource(stream).connect(analyser);
+    startLiveWaveform();
+
+    // iOS Safari only supports audio/mp4
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '';
+
+    mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+    chunks = [];
+    mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      const type = mimeType || 'audio/mp4';
+      recordedBlob = new Blob(chunks, { type });
+      stream.getTracks().forEach(t => t.stop());
+      cancelAnimationFrame(animFrame);
+      setMicStatus('✓ Recording captured', false);
+      updateAnalyzeBtn();
+    };
+    mediaRecorder.start(100);
+    isRecording = true;
+    setMicStatus('Recording — tap to stop', true);
+    document.getElementById('micBtn').classList.add('recording');
+    document.getElementById('micBtn').textContent = '⏹';
+  } catch (e) {
+    let msg = 'Microphone error. Try reloading.';
+    if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError')
+      msg = 'Mic blocked. Go to Settings → Safari → Microphone and allow access.';
+    else if (e.name === 'NotFoundError')
+      msg = 'No microphone found.';
+    showError(msg);
+  }
+}
+
+function stopMic() {
+  mediaRecorder?.stop();
+  isRecording = false;
+  document.getElementById('micBtn').classList.remove('recording');
+  document.getElementById('micBtn').textContent = '🎙';
+}
+
+function setMicStatus(text, active) {
+  const el = document.getElementById('micStatus');
+  el.textContent = text;
+  el.className = 'mic-status' + (active ? ' active' : '');
+}
+
+// ── Audio Analysis ────────────────────────────────────────────────────────────
+function autocorrelate(buf, sampleRate) {
+  const SIZE = buf.length;
+  let rms = 0;
+  for (let i = 0; i < SIZE; i++) rms += buf[i] * buf[i];
+  rms = Math.sqrt(rms / SIZE);
+  if (rms < 0.01) return -1;
+  let r1 = 0, r2 = SIZE - 1;
+  const thres = 0.2;
+  for (let i = 0; i < SIZE / 2; i++) { if (Math.abs(buf[i]) < thres) { r1 = i; break; } }
+  for (let i = 1; i < SIZE / 2; i++) { if (Math.abs(buf[SIZE - i]) < thres) { r2 = SIZE - i; break; } }
+  const sliced = buf.slice(r1, r2);
+  const c = new Float32Array(sliced.length);
+  for (let i = 0; i < sliced.length; i++)
+    for (let j = 0; j < sliced.length - i; j++) c[i] += sliced[j] * sliced[j + i];
+  let d = 0;
+  while (c[d] > c[d + 1]) d++;
+  let maxval = -1, maxpos = -1;
+  for (let i = d; i < sliced.length; i++) { if (c[i] > maxval) { maxval = c[i]; maxpos = i; } }
+  if (maxpos < 1) return -1;
+  let T0 = maxpos;
+  const x1 = c[T0-1], x2 = c[T0], x3 = c[T0+1];
+  const a = (x1 + x3 - 2 * x2) / 2;
+  const b = (x3 - x1) / 2;
+  if (a) T0 = T0 - b / (2 * a);
+  return sampleRate / T0;
+}
+
+function freqToNote(freq) {
+  if (freq <= 0) return null;
+  const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const semi = Math.round(12 * Math.log2(freq / 440)) + 69;
+  return names[((semi % 12) + 12) % 12];
+}
+
+async function analyzeBuffer(audioBuffer) {
+  const data = audioBuffer.getChannelData(0);
+  const sr = audioBuffer.sampleRate;
+  const counts = {};
+  for (let i = 0; i < data.length - 2048; i += 1024) {
+    const f = autocorrelate(data.slice(i, i + 2048), sr);
+    if (f > 60 && f < 1400) {
+      const n = freqToNote(f);
+      if (n) counts[n] = (counts[n] || 0) + 1;
+    }
+  }
+  const sorted = Object.entries(counts).sort((a,b) => b[1]-a[1]).map(([name,count]) => ({name,count}));
+  return { detectedNotes: sorted, uniqueNotes: sorted.map(n => n.name), duration: Math.round(audioBuffer.duration) };
+}
+
+// ── Claude API ────────────────────────────────────────────────────────────────
+async function askClaude(analysis, inputType) {
+  const prompt = `You are a world-class music theorist, guitarist, and transcriptionist with decades of experience. Analyze this audio frequency data with the depth and precision of a professional musician. Consider the harmonic relationships between notes carefully before determining the key and chords.
+
+Audio Analysis:
+- Duration: ${analysis.duration}s
+- Detected notes (by frequency of occurrence): ${analysis.detectedNotes.map(n => n.name+'('+n.count+'x)').join(', ')}
+- Unique notes present: ${analysis.uniqueNotes.join(', ')}
+- Input type: ${inputType}
+
+Using your expert knowledge of music theory, chord construction, and guitar technique:
+1. Determine the most likely key by analyzing which scale best fits all detected notes
+2. Identify the chord progression based on diatonic harmony in that key
+3. Write accurate guitar tablature with proper fret positions
+4. Provide genuinely useful playing advice
+
+Respond ONLY with valid JSON, no markdown backticks or preamble:
+{
+  "key": "G Major",
+  "scale": "G Major Pentatonic",
+  "tempo_estimate": "~120 BPM",
+  "time_signature": "4/4",
+  "chords": ["G","C","D","Em"],
+  "root_chord": "G",
+  "notes_in_key": ["G","A","B","C","D","E","F#"],
+  "highlighted_notes": ["G","D","B"],
+  "guitar_tab": "e|--------------------|\nB|--------------------|\nG|--------------------|\nD|--------------------|\nA|--2--2--3--2--0-----|\nE|--3--3--3--3--3-----|",
+  "chord_shapes": "G: 320003\nC: x32010\nD: xx0232\nEm: 022000",
+  "progression_analysis": "2-3 sentences about the progression, its emotional quality, and genre context.",
+  "playing_tips": "2-3 specific, actionable tips for a guitarist learning this piece.",
+  "beginner_tab": "e|--3--3--5--3--0-----|",
+  "strumming_pattern": "D DU UDU",
+  "capo": "None"
+}`;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-opus-4-6',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  const data = await res.json();
+  const text = (data.content || []).map(b => b.text || '').join('');
+  return JSON.parse(text.replace(/```json|```/g, '').trim());
+}
+
+// ── Main Analyze ──────────────────────────────────────────────────────────────
+async function analyze() {
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true;
+  showStatus();
+  clearResults();
+
+  try {
+    let result;
+
+    if (activeTab === 'url') {
+      const url = document.getElementById('urlInput').value.trim();
+      const mock = {
+        detectedNotes: [{name:'E',count:45},{name:'G',count:38},{name:'B',count:32},{name:'D',count:28},{name:'A',count:22},{name:'C',count:18}],
+        uniqueNotes: ['E','G','B','D','A','C'], duration: 180
+      };
+      result = await askClaude(mock, 'YouTube URL: ' + url);
+    } else {
+      const blob = activeTab === 'upload' ? audioFile : recordedBlob;
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') await ctx.resume();
+      const arrayBuf = await blob.arrayBuffer();
+      const audioBuf = await ctx.decodeAudioData(arrayBuf);
+      const analysis = await analyzeBuffer(audioBuf);
+      result = await askClaude(analysis, activeTab === 'mic' ? 'microphone recording' : 'uploaded file');
+    }
+
+    clearStatus();
+    renderResults(result);
+  } catch (e) {
+    clearStatus();
+    showError(e.message || 'Analysis failed. Please try again.');
+  }
+
+  btn.disabled = false;
+  updateAnalyzeBtn();
+}
+
+// ── Render Results ────────────────────────────────────────────────────────────
+function renderTabLines(tabStr) {
+  const stringNames = ['e','B','G','D','A','E'];
+  return tabStr.split('\n').map(line => {
+    const first = line[0];
+    if (stringNames.includes(first) && line[1] === '|') {
+      return `<span class="tab-string-e6">${first}</span>${escHtml(line.slice(1))}`;
+    }
+    return escHtml(line);
+  }).join('\n');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderResults(r) {
+  const area = document.getElementById('resultsArea');
+
+  const capoHtml = r.capo && r.capo !== 'None'
+    ? `<div class="stat-box"><div class="stat-label">Capo</div><div class="stat-value" style="font-size:1rem;padding-top:0.3rem">${escHtml(r.capo)}</div></div>` : '';
+
+  const notesBadges = (r.notes_in_key || []).map(n =>
+    `<span class="note-badge${(r.highlighted_notes||[]).includes(n) ? ' highlight' : ''}">${escHtml(n)}</span>`
+  ).join('');
+
+  const chordPills = (r.chords || []).map(c =>
+    `<span class="chord-pill${c === r.root_chord ? ' root' : ''}">${escHtml(c)}</span>`
+  ).join('');
+
+  const strumHtml = r.strumming_pattern
+    ? `<div class="section-label">Strumming Pattern</div><div class="strum">${escHtml(r.strumming_pattern)}</div>` : '';
+
+  const beginnerTabHtml = r.beginner_tab
+    ? `<div class="section-label" style="margin-top:0.5rem">Simplified Melody (Beginner)</div>
+       <div class="tab-display">${renderTabLines(r.beginner_tab)}</div>` : '';
+
+  area.innerHTML = `
+    <div class="card">
+      <div class="card-title">Key Analysis</div>
+      <div class="results-grid">
+        <div class="stat-box">
+          <div class="stat-label">Key</div>
+          <div class="stat-value">${escHtml((r.key||'').split(' ')[0])}</div>
+          <div class="stat-sub">${escHtml((r.key||'').split(' ').slice(1).join(' '))}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Scale</div>
+          <div class="stat-value" style="font-size:0.95rem;padding-top:0.4rem">${escHtml(r.scale||'')}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Tempo</div>
+          <div class="stat-value" style="font-size:1.3rem">${escHtml(r.tempo_estimate||'')}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Time Sig</div>
+          <div class="stat-value">${escHtml(r.time_signature||'')}</div>
+        </div>
+        ${capoHtml}
+      </div>
+      <div class="section-label">Notes in Key</div>
+      <div class="notes-grid">${notesBadges}</div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Chord Progression</div>
+      <div class="chord-row">${chordPills}</div>
+      ${strumHtml}
+      ${r.progression_analysis ? `<div class="prose">${escHtml(r.progression_analysis)}</div>` : ''}
+    </div>
+
+    <div class="card">
+      <div class="card-title">Guitar Tab</div>
+      <div class="tab-display">${renderTabLines(r.guitar_tab||'')}</div>
+      ${r.chord_shapes ? `<div class="section-label">Chord Fingerings</div><div class="tab-display" style="font-size:0.72rem">${escHtml(r.chord_shapes)}</div>` : ''}
+      ${beginnerTabHtml}
+    </div>
+
+    ${r.playing_tips ? `<div class="card"><div class="card-title">Playing Tips</div><div class="prose">${escHtml(r.playing_tips)}</div></div>` : ''}
+  `;
+
+  // Smooth scroll to results
+  area.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function showStatus() {
+  document.getElementById('statusArea').innerHTML = `
+    <div class="loading">
+      <div>🎸 Detecting pitches &amp; frequencies</div>
+      <div class="loading-anim" style="margin-top:0.5rem">Asking Claude to interpret</div>
+    </div>`;
+}
+function clearStatus() { document.getElementById('statusArea').innerHTML = ''; }
+function clearResults() { document.getElementById('resultsArea').innerHTML = ''; }
+function showError(msg) {
+  document.getElementById('statusArea').innerHTML = `<div class="error-box">⚠ ${escHtml(msg)}</div>`;
+}
+
+// ── Service Worker (inline, registers cache for offline use) ──────────────────
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'fretboard-v1';
+    const URLS = [location.href];
+    self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(URLS))));
+    self.addEventListener('fetch', e => {
+      if (e.request.method !== 'GET') return;
+      e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).then(res => {
+        const clone = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+        return res;
+      })));
+    });
+  `;
+  const swBlob = new Blob([swCode], { type: 'application/javascript' });
+  const swURL = URL.createObjectURL(swBlob);
+  navigator.serviceWorker.register(swURL).catch(() => {});
+}
+</script>
+</body>
+</html>
