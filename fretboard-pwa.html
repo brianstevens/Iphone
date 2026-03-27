@@ -498,18 +498,37 @@ Respond ONLY with valid JSON, no markdown backticks or preamble:
   "capo": "None"
 }`;
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-opus-4-6',
-      max_tokens: 2000,
-      messages: [{ role: 'user', content: prompt }]
-    })
-  });
+  let res;
+  try {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-opus-4-6',
+        max_tokens: 2000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+  } catch (fetchErr) {
+    throw new Error('Network error — check your internet connection. (' + fetchErr.message + ')');
+  }
+
   const data = await res.json();
+
+  // Surface any API-level errors clearly
+  if (!res.ok || data.error) {
+    const errMsg = data.error?.message || JSON.stringify(data);
+    throw new Error('API error ' + res.status + ': ' + errMsg);
+  }
+
   const text = (data.content || []).map(b => b.text || '').join('');
-  return JSON.parse(text.replace(/```json|```/g, '').trim());
+  if (!text) throw new Error('Empty response from API. Raw: ' + JSON.stringify(data));
+
+  try {
+    return JSON.parse(text.replace(/```json|```/g, '').trim());
+  } catch (parseErr) {
+    throw new Error('Could not parse response. Got: ' + text.slice(0, 200));
+  }
 }
 
 // ── Main Analyze ──────────────────────────────────────────────────────────────
